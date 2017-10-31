@@ -58,7 +58,7 @@ MPIDI_POSIX_am_isend(int rank,
     MPIDI_POSIX_am_header_t *msg_hdr_p = &msg_hdr;
     MPIDI_POSIX_am_request_header_t *curr_sreq_hdr = NULL;
 
-    if (unlikely(!dt_contig)) {
+    if (unlikely(!dt_contig && (data_sz > 0))) {
         size_t segment_first;
         MPI_Aint last;
         struct MPIR_Segment *segment_ptr = NULL;
@@ -105,11 +105,7 @@ MPIDI_POSIX_am_isend(int rank,
 
     struct iovec *iov_left_ptr = iov_left;
 
-    size_t iov_num_left = 2;
-
-    if (!data || !count) {
-        iov_num_left = 1;
-    }
+    size_t iov_num_left = (data_sz > 0) ? 2 : 1;
 
     if (unlikely(MPIDI_POSIX_global.postponed_queue)) {
         goto enqueue_request;
@@ -189,7 +185,7 @@ MPIDI_POSIX_am_isend(int rank,
     }
 
     if (iov_num_left == 1) {
-        if (!data || !count) {
+        if (data_sz == 0) {
             curr_sreq_hdr->iov[0].iov_base = curr_sreq_hdr->am_hdr;
             curr_sreq_hdr->iov[0].iov_len = curr_sreq_hdr->am_hdr_sz;
         }
