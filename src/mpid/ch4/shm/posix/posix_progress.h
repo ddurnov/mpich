@@ -76,8 +76,16 @@ MPL_STATIC_INLINE_PREFIX int MPIDI_POSIX_progress(int blocking)
         payload_left -= msg_hdr->am_hdr_sz;
 
         if (rreq) {
-            if ((!p_data || !p_data_sz) && target_cmpl_cb) {
-                target_cmpl_cb(rreq);
+            if ((p_data_sz == 0) && (in_total_data_sz == 0)) {
+                /* zero message size optimization */
+
+                MPIR_STATUS_SET_COUNT(rreq->status, 0);
+
+                rreq->status.MPI_ERROR = MPI_SUCCESS;
+
+                if (target_cmpl_cb) {
+                    target_cmpl_cb(rreq);
+                }
 
                 MPIDI_POSIX_eager_recv_commit(&transaction);
 
@@ -99,7 +107,10 @@ MPL_STATIC_INLINE_PREFIX int MPIDI_POSIX_progress(int blocking)
                 MPIR_STATUS_SET_COUNT(rreq->status, recv_data_sz);
 
                 MPIDI_POSIX_eager_recv_memcpy(&transaction, p_data, payload, recv_data_sz);
-                target_cmpl_cb(rreq);
+
+                if (target_cmpl_cb) {
+                    target_cmpl_cb(rreq);
+                }
 
                 MPIDI_POSIX_eager_recv_commit(&transaction);
 
@@ -120,26 +131,24 @@ MPL_STATIC_INLINE_PREFIX int MPIDI_POSIX_progress(int blocking)
             curr_rreq_hdr->dst_grank = transaction.src_grank;
 
             if (is_contig) {
-                curr_rreq_hdr->iov[0].iov_base = p_data;
-                curr_rreq_hdr->iov[0].iov_len = p_data_sz;
+                curr_rreq_hdr->iov_ptr = curr_rreq_hdr->iov;
+
+                curr_rreq_hdr->iov_ptr[0].iov_base = p_data;
+                curr_rreq_hdr->iov_ptr[0].iov_len = p_data_sz;
 
                 curr_rreq_hdr->iov_num = 1;
-                curr_rreq_hdr->iov_num_total = 1;
 
                 recv_data_sz = p_data_sz;
             }
             else {
-                for (i = 0; i < p_data_sz; i++) {
-                    curr_rreq_hdr->iov[i] = ((struct iovec *) p_data)[i];
+                curr_rreq_hdr->iov_ptr = ((struct iovec *) p_data);
 
-                    recv_data_sz += curr_rreq_hdr->iov[i].iov_len;
+                for (i = 0; i < p_data_sz; i++) {
+                    recv_data_sz += curr_rreq_hdr->iov_ptr[i].iov_len;
                 }
 
                 curr_rreq_hdr->iov_num = p_data_sz;
-                curr_rreq_hdr->iov_num_total = p_data_sz;
             }
-
-            curr_rreq_hdr->iov_ptr = curr_rreq_hdr->iov;
 
             /* Set final request status */
 
@@ -182,7 +191,7 @@ MPL_STATIC_INLINE_PREFIX int MPIDI_POSIX_progress(int blocking)
     for (i = 0; i < curr_rreq_hdr->iov_num; i++) {
         if (payload_left < curr_rreq_hdr->iov_ptr[i].iov_len) {
             MPIDI_POSIX_eager_recv_memcpy(&transaction,
-                                          curr_rreq_hdr->iov[i].iov_base, payload, payload_left);
+                                          curr_rreq_hdr->iov_ptr[i].iov_base, payload, payload_left);
 
             curr_rreq_hdr->iov_ptr[i].iov_base += payload_left;
             curr_rreq_hdr->iov_ptr[i].iov_len -= payload_left;
@@ -206,13 +215,15 @@ MPL_STATIC_INLINE_PREFIX int MPIDI_POSIX_progress(int blocking)
         iov_done++;
     }
 
-    curr_rreq_hdr->iov_num -= iov_done;
-
-    if (curr_rreq_hdr->in_total_data_sz) {
-        curr_rreq_hdr->iov_ptr =
-            &(curr_rreq_hdr->iov[curr_rreq_hdr->iov_num_total - curr_rreq_hdr->iov_num]);
+    if (curr_rreq_hdr->iov_num) {
+        curr_rreq_hdr->iov_num -= iov_done;
+        curr_rreq_hdr->iov_ptr += iov_done;
     }
     else {
+        curr_rreq_hdr->in_total_data_sz -= payload_left;
+    }
+
+    if (curr_rreq_hdr->in_total_data_sz == 0) {
         /* All fragments have been received */
 
         MPIDI_POSIX_global.active_rreq[transaction.src_grank] = NULL;

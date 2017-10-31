@@ -21,7 +21,7 @@
 #define MPIDI_POSIX_AM_DATA_SZ_BITS     (48)
 
 #define MPIDI_POSIX_AM_MSG_HEADER_SIZE  (sizeof(MPIDI_POSIX_am_header_t))
-#define MPIDI_POSIX_MAX_IOV_NUM         (8)
+#define MPIDI_POSIX_MAX_IOV_NUM         (2)
 
 typedef enum {
     MPIDI_POSIX_EAGER_RECV_POSTED_HOOK_STATE_INITIALIZED,
@@ -45,8 +45,7 @@ typedef struct {
 } MPIDI_POSIX_op_t;
 
 typedef struct {
-    MPIDI_POSIX_EAGER_recv_posted_hook_state_t eager_recv_posted_hook_state;
-    int eager_recv_posted_hook_grank;
+    int dummy;
 } MPIDI_POSIX_request_t;
 
 typedef struct MPIDI_POSIX_am_header_t {
@@ -79,7 +78,6 @@ typedef struct {
     struct iovec *iov_ptr;
     struct iovec iov[MPIDI_POSIX_MAX_IOV_NUM];
     size_t iov_num;
-    size_t iov_num_total;
 
     int is_contig;
 
@@ -109,29 +107,31 @@ typedef struct {
 #ifdef POSIX_AM_REQUEST_INLINE
     MPIDI_POSIX_am_request_header_t req_hdr_buffer;
 #endif                          /* POSIX_AM_REQUEST_INLINE */
+    MPIDI_POSIX_EAGER_recv_posted_hook_state_t eager_recv_posted_hook_state;
+    int eager_recv_posted_hook_grank;
 } MPIDI_POSIX_am_request_t;
 
 #define MPIDI_POSIX_EAGER_RECV_INITIALIZE_HOOK(request)\
 do { \
-    (request)->dev.ch4.shm.posix.eager_recv_posted_hook_state = MPIDI_POSIX_EAGER_RECV_POSTED_HOOK_STATE_INITIALIZED; \
+    (request)->dev.ch4.am.shm_am.posix.eager_recv_posted_hook_state = MPIDI_POSIX_EAGER_RECV_POSTED_HOOK_STATE_INITIALIZED; \
 } while (0)
 
 #define MPIDI_POSIX_EAGER_RECV_POSTED_HOOK(request,rank,communicator)\
 do { \
-    if ((request) && ((request)->dev.ch4.shm.posix.eager_recv_posted_hook_state == MPIDI_POSIX_EAGER_RECV_POSTED_HOOK_STATE_INITIALIZED)) { \
+    if ((request) && ((request)->dev.ch4.am.shm_am.posix.eager_recv_posted_hook_state == MPIDI_POSIX_EAGER_RECV_POSTED_HOOK_STATE_INITIALIZED)) { \
         int grank = ((rank) >= 0) ? MPIDI_CH4U_rank_to_lpid((rank), (communicator)) : (rank); \
-        (request)->dev.ch4.shm.posix.eager_recv_posted_hook_state = MPIDI_POSIX_EAGER_RECV_POSTED_HOOK_STATE_REGISTERED; \
-        (request)->dev.ch4.shm.posix.eager_recv_posted_hook_grank = grank; \
+        (request)->dev.ch4.am.shm_am.posix.eager_recv_posted_hook_state = MPIDI_POSIX_EAGER_RECV_POSTED_HOOK_STATE_REGISTERED; \
+        (request)->dev.ch4.am.shm_am.posix.eager_recv_posted_hook_grank = grank; \
         MPIDI_POSIX_eager_recv_posted_hook(grank); \
     } \
 } while(0)
 
 #define MPIDI_POSIX_EAGER_RECV_COMPLETED_HOOK(request)\
 do { \
-    if ((request)->dev.ch4.shm.posix.eager_recv_posted_hook_state == MPIDI_POSIX_EAGER_RECV_POSTED_HOOK_STATE_REGISTERED) { \
-        MPIDI_POSIX_eager_recv_completed_hook((request)->dev.ch4.shm.posix.eager_recv_posted_hook_grank); \
+    if ((request)->dev.ch4.am.shm_am.posix.eager_recv_posted_hook_state == MPIDI_POSIX_EAGER_RECV_POSTED_HOOK_STATE_REGISTERED) { \
+        MPIDI_POSIX_eager_recv_completed_hook((request)->dev.ch4.am.shm_am.posix.eager_recv_posted_hook_grank); \
     } \
-    (request)->dev.ch4.shm.posix.eager_recv_posted_hook_state = MPIDI_POSIX_EAGER_RECV_POSTED_HOOK_STATE_FINALIZED; \
+    (request)->dev.ch4.am.shm_am.posix.eager_recv_posted_hook_state = MPIDI_POSIX_EAGER_RECV_POSTED_HOOK_STATE_FINALIZED; \
 } while (0)
 
 #endif /* POSIX_PRE_H_INCLUDED */
